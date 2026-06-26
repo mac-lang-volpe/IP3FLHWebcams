@@ -450,7 +450,7 @@
             class="camera-frame"
             src="https://raw.githubusercontent.com/VolpeUSDOT/Public-Lands-Computer-Vision/main/IP3/ARCH/arches_latest_annotated.jpg"
             alt="Latest annotated entrance camera view at Arches National Park"
-            loading="lazy"
+            loading="eager"
           />
           <a class="camera-link" href="https://www.nps.gov/media/webcam/view.htm?id=81B46BDB-1DD8-B71B-0B250E8F4CC1E74A&r=/arch/learn/photosmultimedia/webcams.htm" target="_blank" rel="noopener noreferrer">
             Open the live camera source
@@ -623,6 +623,8 @@
       loadedAt: 0
     };
 
+    let currentCameraObjectUrl = null;
+
     async function fetchGithubText(path, cacheKey = Date.now()) {
       const url = `${RAW_BASE_URL}/${path}?cb=${encodeURIComponent(cacheKey)}`;
       const response = await fetch(url, { cache: "no-store" });
@@ -635,6 +637,21 @@
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) throw new Error(`Unable to load ${path}: ${response.status}`);
       return response.json();
+    }
+
+    async function refreshCameraImage(cacheKey) {
+      const response = await fetch(`${IMAGE_BASE_URL}?t=${encodeURIComponent(cacheKey)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Unable to load camera image: ${response.status}`);
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      if (currentCameraObjectUrl) {
+        URL.revokeObjectURL(currentCameraObjectUrl);
+      }
+
+      currentCameraObjectUrl = objectUrl;
+      els.cameraImage.src = objectUrl;
     }
 
     function updateFeedPreview(text) {
@@ -781,7 +798,7 @@
       }
 
       if (feedLoaded) {
-        els.cameraImage.src = `${IMAGE_BASE_URL}?t=${encodeURIComponent(cacheKey)}`;
+        await refreshCameraImage(cacheKey);
       }
 
       try {
