@@ -499,10 +499,12 @@
     const BRANCH = "main";
     const FEED_PATH = "IP3/ARCH/arches_latest_feed.txt";
     const ARCHIVE_PATH = "IP3/ARCH/archivefeed.csv";
+    const RAW_BASE_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}`;
     const IMAGE_BASE_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/IP3/ARCH/arches_latest_annotated.jpg`;
     const GITHUB_API_BASE = `https://api.github.com/repos/${REPOSITORY}/contents`;
     const MOUNTAIN_TIME_ZONE = "America/Denver";
     const USER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+    const REFRESH_INTERVAL_MS = 60000;
 
     const els = {
       syncText: document.getElementById("syncText"),
@@ -614,20 +616,15 @@
       els.errorBox.style.display = message ? "block" : "none";
     };
 
-    async function fetchGithubText(path) {
-      const url = `${GITHUB_API_BASE}/${path}?ref=${encodeURIComponent(BRANCH)}`;
-      const response = await fetch(url, {
-        cache: "no-store",
-        headers: {
-          Accept: "application/vnd.github.raw"
-        }
-      });
+    async function fetchGithubText(path, cacheKey = Date.now()) {
+      const url = `${RAW_BASE_URL}/${path}?cb=${encodeURIComponent(cacheKey)}`;
+      const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) throw new Error(`Unable to load ${path}: ${response.status}`);
       return response.text();
     }
 
-    async function fetchGithubJson(path) {
-      const url = `${GITHUB_API_BASE}/${path}?ref=${encodeURIComponent(BRANCH)}`;
+    async function fetchGithubJson(path, cacheKey = Date.now()) {
+      const url = `${GITHUB_API_BASE}/${path}?ref=${encodeURIComponent(BRANCH)}&cb=${encodeURIComponent(cacheKey)}`;
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) throw new Error(`Unable to load ${path}: ${response.status}`);
       return response.json();
@@ -700,15 +697,15 @@
       return [...byInterval.values()].sort((a, b) => a.sortMinutes - b.sortMinutes);
     }
 
-    async function loadArchiveRows() {
-      const rows = parseArchiveCsv(await fetchGithubText(ARCHIVE_PATH));
+    async function loadArchiveRows(cacheKey) {
+      const rows = parseArchiveCsv(await fetchGithubText(ARCHIVE_PATH, cacheKey));
 
       try {
-        const archiveEntries = await fetchGithubJson("IP3/ARCH/archive");
+        const archiveEntries = await fetchGithubJson("IP3/ARCH/archive", cacheKey);
         if (Array.isArray(archiveEntries)) {
           const archivedCsvs = archiveEntries.filter((entry) => entry && entry.type === "file" && /\.csv$/i.test(entry.name));
           const archivedRows = await Promise.all(
-            archivedCsvs.map(async (entry) => parseArchiveCsv(await fetchGithubText(entry.path)))
+            archivedCsvs.map(async (entry) => parseArchiveCsv(await fetchGithubText(entry.path, cacheKey)))
           );
           rows.push(...archivedRows.flat());
         }
@@ -740,20 +737,27 @@
     }
 
     async function loadDashboard() {
+      const cacheKey = Date.now();
+      let current = null;
+
       try {
-        const [feedText, archiveText] = await Promise.all([
-          fetchGithubText(FEED_PATH),
-          loadArchiveRows()
-        ]);
-
-        const current = updateFeedPreview(feedText);
-        const currentDayKey = formatMountainDateKey(current.timestampUtc);
-        const peak = getDailyPeak(archiveText, currentDayKey);
-        const intervals = buildIntervalSummary(archiveText, currentDayKey);
-
+        const feedText = await fetchGithubText(FEED_PATH, cacheKey);
+        current = updateFeedPreview(feedText);
         els.lastSynced.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
         els.lastSyncedNote.textContent = current.timestampUtc ? "Feed refreshes about every 15 minutes" : "Timestamp unavailable";
         els.laneCounts.textContent = `${current.lane1} / ${current.lane2} / ${current.inLine}`;
+      } catch (error) {
+        console.error(error);
+        els.syncText.textContent = "Feed unavailable";
+        setError("The dashboard could not reach the published GitHub feeds. The camera remains available, but metrics are temporarily unavailable.");
+        return;
+      }
+
+      try {
+        const archiveText = await loadArchiveRows(cacheKey);
+        const currentDayKey = formatMountainDateKey(current.timestampUtc);
+        const peak = getDailyPeak(archiveText, currentDayKey);
+        const intervals = buildIntervalSummary(archiveText, currentDayKey);
 
         if (peak) {
           els.peakQueue.textContent = `${peak.peak}`;
@@ -776,19 +780,21 @@
           els.intervalBars.innerHTML = "";
           els.intervalEmpty.style.display = "flex";
         }
-
-        els.syncText.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
-        els.cameraImage.src = `${IMAGE_BASE_URL}?t=${Date.now()}`;
-        setError("");
       } catch (error) {
-        console.error(error);
-        els.syncText.textContent = "Feed unavailable";
-        setError("The dashboard could not reach the published GitHub feeds. The camera remains available, but metrics are temporarily unavailable.");
+        console.warn("Archive data unavailable", error);
+        els.peakQueue.textContent = "--";
+        els.peakQueueNote.textContent = "Archive data temporarily unavailable";
+        els.intervalBars.innerHTML = "";
+        els.intervalEmpty.style.display = "flex";
       }
+
+      els.syncText.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
+      els.cameraImage.src = `${IMAGE_BASE_URL}?t=${encodeURIComponent(current.timestampUtc || cacheKey)}`;
+      setError("");
     }
 
     loadDashboard();
-    setInterval(loadDashboard, 60000);
+    setInterval(loadDashboard, REFRESH_INTERVAL_MS);
   </script>
 </body>
 </html>
