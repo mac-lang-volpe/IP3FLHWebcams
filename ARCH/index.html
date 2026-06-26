@@ -500,11 +500,13 @@
     const FEED_PATH = "IP3/ARCH/arches_latest_feed.txt";
     const ARCHIVE_PATH = "IP3/ARCH/archivefeed.csv";
     const RAW_BASE_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}`;
-    const IMAGE_BASE_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/IP3/ARCH/arches_latest_annotated.jpg`;
+    const IMAGE_BASE_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/IP3/ARCH/arches_latest_annotated.jpg`; 
     const GITHUB_API_BASE = `https://api.github.com/repos/${REPOSITORY}/contents`;
     const MOUNTAIN_TIME_ZONE = "America/Denver";
     const USER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
-    const REFRESH_INTERVAL_MS = 60000;
+    const FEED_REFRESH_INTERVAL_MS = 15000;
+    const ARCHIVE_REFRESH_INTERVAL_MS = 60000;
+    const IMAGE_REFRESH_INTERVAL_MS = 15000;
 
     const els = {
       syncText: document.getElementById("syncText"),
@@ -616,6 +618,11 @@
       els.errorBox.style.display = message ? "block" : "none";
     };
 
+    const archiveState = {
+      rows: [],
+      loadedAt: 0
+    };
+
     async function fetchGithubText(path, cacheKey = Date.now()) {
       const url = `${RAW_BASE_URL}/${path}?cb=${encodeURIComponent(cacheKey)}`;
       const response = await fetch(url, { cache: "no-store" });
@@ -704,9 +711,16 @@
         const archiveEntries = await fetchGithubJson("IP3/ARCH/archive", cacheKey);
         if (Array.isArray(archiveEntries)) {
           const archivedCsvs = archiveEntries.filter((entry) => entry && entry.type === "file" && /\.csv$/i.test(entry.name));
-          const archivedRows = await Promise.all(
-            archivedCsvs.map(async (entry) => parseArchiveCsv(await fetchGithubText(entry.path, cacheKey)))
-          );
+          const archivedRows = await Promise.all(archivedCsvs.map(async (entry) => {
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+              try {
+                return parseArchiveCsv(await fetchGithubText(entry.path, cacheKey));
+              } catch (error) {
+                if (attempt === 1) throw error;
+              }
+            }
+            return [];
+          }));
           rows.push(...archivedRows.flat());
         }
       } catch (error) {
@@ -714,6 +728,17 @@
       }
 
       return rows;
+    }
+
+    async function getArchiveRows(cacheKey) {
+      const now = Date.now();
+      if (archiveState.rows.length > 0 && now - archiveState.loadedAt < ARCHIVE_REFRESH_INTERVAL_MS) {
+        return archiveState.rows;
+      }
+
+      archiveState.rows = await loadArchiveRows(cacheKey);
+      archiveState.loadedAt = now;
+      return archiveState.rows;
     }
 
     function getDailyPeak(rows, dayKey) {
@@ -738,6 +763,7 @@
 
     async function loadDashboard() {
       const cacheKey = Date.now();
+      let feedLoaded = false;
       let current = null;
 
       try {
@@ -746,6 +772,7 @@
         els.lastSynced.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
         els.lastSyncedNote.textContent = current.timestampUtc ? "Feed refreshes about every 15 minutes" : "Timestamp unavailable";
         els.laneCounts.textContent = `${current.lane1} / ${current.lane2} / ${current.inLine}`;
+        feedLoaded = true;
       } catch (error) {
         console.error(error);
         els.syncText.textContent = "Feed unavailable";
@@ -753,11 +780,15 @@
         return;
       }
 
+      if (feedLoaded) {
+        els.cameraImage.src = `${IMAGE_BASE_URL}?t=${encodeURIComponent(cacheKey)}`;
+      }
+
       try {
-        const archiveText = await loadArchiveRows(cacheKey);
+        const archiveRows = await getArchiveRows(cacheKey);
         const currentDayKey = formatMountainDateKey(current.timestampUtc);
-        const peak = getDailyPeak(archiveText, currentDayKey);
-        const intervals = buildIntervalSummary(archiveText, currentDayKey);
+        const peak = getDailyPeak(archiveRows, currentDayKey);
+        const intervals = buildIntervalSummary(archiveRows, currentDayKey);
 
         if (peak) {
           els.peakQueue.textContent = `${peak.peak}`;
@@ -789,12 +820,15 @@
       }
 
       els.syncText.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
-      els.cameraImage.src = `${IMAGE_BASE_URL}?t=${encodeURIComponent(current.timestampUtc || cacheKey)}`;
       setError("");
     }
 
     loadDashboard();
-    setInterval(loadDashboard, REFRESH_INTERVAL_MS);
+    setInterval(loadDashboard, FEED_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", loadDashboard);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) loadDashboard();
+    });
   </script>
 </body>
 </html>
