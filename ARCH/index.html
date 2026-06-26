@@ -639,29 +639,30 @@
     }
 
     async function refreshCameraImage(cacheKey) {
-      const response = await fetch(`${GITHUB_API_BASE}/IP3/ARCH/arches_latest_annotated.jpg?ref=${encodeURIComponent(BRANCH)}&cb=${encodeURIComponent(cacheKey)}`, { cache: "no-store" });
-      if (!response.ok) throw new Error(`Unable to load camera image: ${response.status}`);
+      try {
+        const response = await fetch(`${GITHUB_API_BASE}/IP3/ARCH/arches_latest_annotated.jpg?ref=${encodeURIComponent(BRANCH)}&cb=${encodeURIComponent(cacheKey)}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Unable to load camera image metadata: ${response.status}`);
 
-      const imageJson = await response.json();
-      if (!imageJson || typeof imageJson.content !== "string") {
-        throw new Error("Unable to decode camera image payload");
+        const imageJson = await response.json();
+        const downloadUrl = imageJson && typeof imageJson.download_url === "string" ? `${imageJson.download_url}?cb=${encodeURIComponent(cacheKey)}` : null;
+        if (!downloadUrl) throw new Error("Unable to resolve camera image download URL");
+
+        const imageResponse = await fetch(downloadUrl, { cache: "no-store" });
+        if (!imageResponse.ok) throw new Error(`Unable to load camera image: ${imageResponse.status}`);
+
+        const blob = await imageResponse.blob();
+        const objectUrl = URL.createObjectURL(blob);
+
+        if (currentCameraObjectUrl) {
+          URL.revokeObjectURL(currentCameraObjectUrl);
+        }
+
+        currentCameraObjectUrl = objectUrl;
+        els.cameraImage.src = objectUrl;
+      } catch (error) {
+        console.warn("Camera image refresh failed", error);
+        els.cameraImage.src = `${IMAGE_BASE_URL}?t=${encodeURIComponent(cacheKey)}`;
       }
-
-      const binary = atob(imageJson.content.replace(/\n/g, ""));
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-
-      const blob = new Blob([bytes], { type: imageJson?.mime_type || "image/jpeg" });
-      const objectUrl = URL.createObjectURL(blob);
-
-      if (currentCameraObjectUrl) {
-        URL.revokeObjectURL(currentCameraObjectUrl);
-      }
-
-      currentCameraObjectUrl = objectUrl;
-      els.cameraImage.src = objectUrl;
     }
 
     function updateFeedPreview(text) {
@@ -808,7 +809,7 @@
       }
 
       if (feedLoaded) {
-        await refreshCameraImage(cacheKey);
+        void refreshCameraImage(cacheKey);
       }
 
       try {
