@@ -448,7 +448,7 @@
           <img
             id="cameraImage"
             class="camera-frame"
-            src="https://raw.githubusercontent.com/VolpeUSDOT/Public-Lands-Computer-Vision/main/IP3/ARCH/arches_latest_annotated.jpg"
+            src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
             alt="Latest annotated entrance camera view at Arches National Park"
             loading="eager"
           />
@@ -500,7 +500,6 @@
     const FEED_PATH = "IP3/ARCH/arches_latest_feed.txt";
     const ARCHIVE_PATH = "IP3/ARCH/archivefeed.csv";
     const RAW_BASE_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}`;
-    const IMAGE_BASE_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/IP3/ARCH/arches_latest_annotated.jpg`; 
     const GITHUB_API_BASE = `https://api.github.com/repos/${REPOSITORY}/contents`;
     const MOUNTAIN_TIME_ZONE = "America/Denver";
     const USER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
@@ -640,10 +639,21 @@
     }
 
     async function refreshCameraImage(cacheKey) {
-      const response = await fetch(`${IMAGE_BASE_URL}?t=${encodeURIComponent(cacheKey)}`, { cache: "no-store" });
+      const response = await fetch(`${GITHUB_API_BASE}/IP3/ARCH/arches_latest_annotated.jpg?ref=${encodeURIComponent(BRANCH)}&cb=${encodeURIComponent(cacheKey)}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`Unable to load camera image: ${response.status}`);
 
-      const blob = await response.blob();
+      const imageJson = await response.json();
+      if (!imageJson || typeof imageJson.content !== "string") {
+        throw new Error("Unable to decode camera image payload");
+      }
+
+      const binary = atob(imageJson.content.replace(/\n/g, ""));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: imageJson?.mime_type || "image/jpeg" });
       const objectUrl = URL.createObjectURL(blob);
 
       if (currentCameraObjectUrl) {
