@@ -286,18 +286,6 @@
       padding: 0 0.4rem;
     }
 
-    .interval-labels {
-      position: absolute;
-      left: 0.4rem;
-      right: 0.4rem;
-      bottom: 0.35rem;
-      height: 1.2rem;
-      display: grid;
-      grid-template-columns: repeat(96, minmax(0, 1fr));
-      align-items: end;
-      pointer-events: none;
-    }
-
     .interval-bar-item {
       grid-row: 1;
       align-self: end;
@@ -323,16 +311,6 @@
       border-radius: 0.22rem 0.22rem 0 0;
       background: linear-gradient(180deg, #c56c39 0%, #1f5e3b 100%);
       box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18) inset;
-    }
-
-    .interval-bar-label {
-      grid-row: 1;
-      align-self: end;
-      justify-self: center;
-      transform: translateY(1.1rem);
-      font-size: 0.7rem;
-      color: var(--muted);
-      white-space: nowrap;
     }
 
     .interval-axis {
@@ -383,18 +361,6 @@
       text-align: right;
     }
 
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
     .footer {
       width: min(calc(100% - 2rem), var(--max));
       margin: 0 auto 2rem;
@@ -427,7 +393,7 @@
       <div>
         <p class="agency">U.S. DOT Volpe Center</p>
         <h1 class="title">Arches National Park</h1>
-        <p class="subtle">Live camera view and daily queue metrics sourced from the Arches Entrance feed on GitHub.</p>
+        <p class="subtle">Live camera view and daily queue metrics sourced from the Arch feed on GitHub.</p>
       </div>
       <div class="status-pill" id="syncPill"><span class="dot" aria-hidden="true"></span><span id="syncText">Loading latest data</span></div>
     </div>
@@ -445,7 +411,7 @@
               <div class="metric">
                 <p class="metric-label">Current timestamp</p>
                 <p class="metric-value" id="lastSynced">--</p>
-                <p class="metric-note" id="lastSyncedNote">Waiting for feed</p>
+                <p class="metric-note" id="lastSyncedNote">Feed refreshes about every 15 minutes</p>
               </div>
               <div class="metric">
                 <p class="metric-label">Current Queue</p>
@@ -463,11 +429,10 @@
               <p class="section-title">Queue by 15-minute interval</p>
               <div class="interval-chart-wrap" id="intervalChartWrap" aria-label="Queue by 15-minute interval chart">
                 <div class="interval-bars" id="intervalBars"></div>
-                <div class="interval-labels" aria-hidden="true" id="intervalLabels"></div>
                 <div class="interval-axis" aria-hidden="true">
                   <span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span>
                 </div>
-                <div class="interval-empty" id="intervalEmpty">Loading interval chart...</div>
+                <div class="interval-empty" id="intervalEmpty" aria-hidden="true"></div>
               </div>
             </div>
           </div>
@@ -501,7 +466,7 @@
           <div class="card-body">
             <div class="placeholder" aria-live="polite">
               <p class="placeholder-title">Currently inactive</p>
-              <p class="placeholder-note">Space reserved for the second Arches camera feed via Utah DOT. This camera is down right now.</p>
+              <p class="placeholder-note">Space reserved for the second Arches camera feed. This camera is down right now.</p>
             </div>
           </div>
         </article>
@@ -516,7 +481,7 @@
             <p class="section-title">Published status</p>
             <ul class="feed" id="feedList">
               <li><span class="feed-label">Status</span><span class="feed-text" id="feedStatus">Loading...</span></li>
-              <li><span class="feed-label">Local Timestamp</span><span class="feed-text" id="feedTimestamp">--</span></li>
+              <li><span class="feed-label">Feed Timestamp (MT)</span><span class="feed-text" id="feedTimestamp">--</span></li>
               <li><span class="feed-label">Message</span><span class="feed-text" id="feedMessage">--</span></li>
             </ul>
           </div>
@@ -537,6 +502,7 @@
     const IMAGE_BASE_URL = `https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}/IP3/ARCH/arches_latest_annotated.jpg`;
     const GITHUB_API_BASE = `https://api.github.com/repos/${REPOSITORY}/contents`;
     const MOUNTAIN_TIME_ZONE = "America/Denver";
+    const USER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
 
     const els = {
       syncText: document.getElementById("syncText"),
@@ -546,7 +512,6 @@
       peakQueue: document.getElementById("peakQueue"),
       peakQueueNote: document.getElementById("peakQueueNote"),
       intervalBars: document.getElementById("intervalBars"),
-      intervalLabels: document.getElementById("intervalLabels"),
       intervalEmpty: document.getElementById("intervalEmpty"),
       feedStatus: document.getElementById("feedStatus"),
       feedTimestamp: document.getElementById("feedTimestamp"),
@@ -564,6 +529,21 @@
         timeStyle: "short",
         timeZone: MOUNTAIN_TIME_ZONE
       }).format(date);
+    };
+
+    const formatLocalDateTime = (value) => {
+      if (!value) return "--";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      const timeZoneParts = new Intl.DateTimeFormat(undefined, {
+        timeZoneName: "short"
+      }).formatToParts(date);
+      const timeZoneName = timeZoneParts.find((part) => part.type === "timeZoneName")?.value || USER_TIME_ZONE;
+
+      return `${new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short"
+      }).format(date)} (${timeZoneName})`;
     };
 
     const formatMountainDateKey = (value) => {
@@ -771,8 +751,8 @@
         const peak = getDailyPeak(archiveText, currentDayKey);
         const intervals = buildIntervalSummary(archiveText, currentDayKey);
 
-        els.lastSynced.textContent = formatMountainDateTime(current.timestampUtc);
-        els.lastSyncedNote.textContent = current.timestampUtc ? "Latest published Arches snapshot" : "Timestamp unavailable";
+        els.lastSynced.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
+        els.lastSyncedNote.textContent = current.timestampUtc ? "Feed refreshes about every 15 minutes" : "Timestamp unavailable";
         els.laneCounts.textContent = `${current.lane1} / ${current.lane2} / ${current.inLine}`;
 
         if (peak) {
@@ -792,19 +772,12 @@
             const tooltip = `${entry.label} - ${entry.total} in line`;
             return `<div class="interval-bar-item" style="grid-column: ${slot + 1};" title="${tooltip}" aria-label="${tooltip}"><div class="interval-bar-stack"><span class="interval-bar-fill" style="height: ${height.toFixed(1)}%"></span></div></div>`;
           }).join("");
-          els.intervalLabels.innerHTML = intervals.map((entry) => {
-            const slot = Math.min(Math.floor((entry.minuteOfDay ?? 0) / 15), 95);
-            const labelText = (entry.minuteOfDay ?? 0) % 60 === 0 ? entry.label : "";
-            return labelText ? `<span class="interval-bar-label" style="grid-column: ${slot + 1};">${labelText}</span>` : "";
-          }).join("");
         } else {
           els.intervalBars.innerHTML = "";
-          els.intervalLabels.innerHTML = "";
           els.intervalEmpty.style.display = "flex";
-          els.intervalEmpty.textContent = "No interval data available for the selected day";
         }
 
-        els.syncText.textContent = `Updated ${formatMountainDateTime(current.timestampUtc)}`;
+        els.syncText.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
         els.cameraImage.src = `${IMAGE_BASE_URL}?t=${Date.now()}`;
         setError("");
       } catch (error) {
