@@ -108,7 +108,7 @@
 
     .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 1rem;
     }
 
@@ -424,6 +424,11 @@
                 <p class="metric-value" id="peakQueue">--</p>
                 <p class="metric-note" id="peakQueueNote">Resolved from archivefeed.csv and archive rows</p>
               </div>
+              <div class="metric">
+                <p class="metric-label">Vehicles Dected on Arches Entrance Road</p>
+                <p class="metric-value" id="entranceRoadCount">--</p>
+                <p class="metric-note">From the latest published feed</p>
+              </div>
             </div>
             <div class="interval-chart">
               <p class="section-title">Queue by 15-minute interval</p>
@@ -463,12 +468,17 @@
           <div class="card-head">
             <h2 class="card-title" id="secondaryCamHeading">UT DOT Cam</h2>
           </div>
-          <div class="card-body">
-            <div class="placeholder" aria-live="polite">
-              <p class="placeholder-title">Currently inactive</p>
-              <p class="placeholder-note">Space reserved for the second Arches camera feed. This camera is down right now.</p>
-            </div>
-          </div>
+          <img
+            class="camera-frame"
+            src="https://github.com/VolpeUSDOT/Public-Lands-Computer-Vision/blob/main/IP3/ARCH/UTDOT_latest_annotated.jpg?raw=1"
+            alt="Latest annotated UTDOT camera view"
+            loading="eager"
+          />
+          <a class="camera-link" href="https://prod-ut.ibi511.com/map/Cctv/136741?t=1782490208" target="_blank" rel="noopener noreferrer">
+            Open the live camera source
+          </a>
+          <p class="camera-caption">The image above displays the latest annotated UTDOT camera snapshot.</p>
+          <p class="camera-caption">Click the link above to view the live feed.</p>
         </article>
       </section>
 
@@ -515,6 +525,7 @@
       laneCounts: document.getElementById("laneCounts"),
       peakQueue: document.getElementById("peakQueue"),
       peakQueueNote: document.getElementById("peakQueueNote"),
+      entranceRoadCount: document.getElementById("entranceRoadCount"),
       intervalBars: document.getElementById("intervalBars"),
       intervalEmpty: document.getElementById("intervalEmpty"),
       feedStatus: document.getElementById("feedStatus"),
@@ -661,7 +672,8 @@
         timestampUtc: map.get("timestamp_utc") || null,
         lane1: Number(map.get("vehicles_in_lane_1") || 0),
         lane2: Number(map.get("vehicles_in_lane_2") || 0),
-        inLine: Number(map.get("vehicles_in_line") || 0)
+        inLine: Number(map.get("vehicles_in_line") || 0),
+        entranceRoad: Number(map.get("on_entrance_road") || 0)
       };
     }
 
@@ -780,6 +792,7 @@
         els.lastSynced.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
         els.lastSyncedNote.textContent = current.timestampUtc ? "Feed refreshes about every 15 minutes" : "Timestamp unavailable";
         els.laneCounts.textContent = `${current.lane1} / ${current.lane2} / ${current.inLine}`;
+        els.entranceRoadCount.textContent = `${current.entranceRoad}`;
         feedLoaded = true;
       } catch (error) {
         console.error(error);
