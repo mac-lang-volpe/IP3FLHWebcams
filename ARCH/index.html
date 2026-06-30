@@ -842,7 +842,7 @@
         const feedText = await fetchGithubText(FEED_PATH, cacheKey);
         current = updateFeedPreview(feedText);
         els.lastSynced.textContent = `Updated ${formatLocalDateTime(current.timestampUtc)}`;
-        els.lastSyncedNote.textContent = current.timestampUtc ? "Feed refreshes about every 15 minutes" : "Timestamp unavailable";
+        els.lastSyncedNote.textContent = current.timestampUtc ? "Feed refreshes about every 15 minutes between 6am-8pm MT" : "Timestamp unavailable";
         els.laneCounts.textContent = `${current.lane1} / ${current.lane2} / ${current.inLine}`;
         els.entranceRoadCount.textContent = `${current.entranceRoad}`;
         feedLoaded = true;
