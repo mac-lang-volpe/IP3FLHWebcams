@@ -321,7 +321,7 @@
     .interval-bars {
       position: relative;
       display: grid;
-      grid-template-columns: repeat(96, minmax(0, 1fr));
+      grid-template-columns: repeat(57, minmax(0, 1fr)); /* Changed: 57 columns for 6AM to 8PM */
       align-items: end;
       height: calc(100% - 1.8rem);
       gap: 0;
@@ -476,7 +476,7 @@
               </div>
             </div>
             <div class="interval-chart">
-              <p class="section-title">Queue by 15-minute interval</p>
+              <p class="section-title">Queue by 15-minute interval (6 AM - 8 PM)</p>
               <div class="interval-chart-wrap" id="intervalChartWrap" aria-label="Queue by 15-minute interval chart">
                 <div class="interval-y-grid" aria-hidden="true"><div class="interval-y-grid-mid"></div></div>
                 <div class="interval-y-axis" id="intervalYAxis" aria-hidden="true">
@@ -486,7 +486,7 @@
                 </div>
                 <div class="interval-bars" id="intervalBars"></div>
                 <div class="interval-axis" aria-hidden="true">
-                  <span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span>
+                  <span>6a</span><span>9:30a</span><span>1p</span><span>4:30p</span><span>8p</span>
                 </div>
                 <div class="interval-empty" id="intervalEmpty" aria-hidden="true"></div>
               </div>
@@ -863,6 +863,9 @@
         const peak = getDailyPeak(archiveRows, currentDayKey);
         const intervals = buildIntervalSummary(archiveRows, currentDayKey);
 
+        // Changed: Filter to only include rows from 6:00 AM (360) to 8:00 PM (1200)
+        const filteredIntervals = intervals.filter(entry => entry.minuteOfDay >= 360 && entry.minuteOfDay <= 1200);
+
         if (peak) {
           els.peakQueue.textContent = `${peak.peak}`;
           els.peakQueueNote.textContent = `Detected ${formatTimeOnlyMountain(peak.timestampUtc)} MT on ${formatMountainDateKey(peak.timestampUtc)}`;
@@ -871,8 +874,8 @@
           els.peakQueueNote.textContent = "No matching rows found for the feed day";
         }
 
-        if (intervals.length > 0) {
-          const maxTotal = Math.max(...intervals.map((entry) => entry.total), 1);
+        if (filteredIntervals.length > 0) {
+          const maxTotal = Math.max(...filteredIntervals.map((entry) => entry.total), 1);
           
           if (els.intervalYAxis) {
             const spans = els.intervalYAxis.getElementsByTagName("span");
@@ -884,9 +887,10 @@
           }
 
           els.intervalEmpty.style.display = "none";
-          els.intervalBars.innerHTML = intervals.map((entry) => {
+          els.intervalBars.innerHTML = filteredIntervals.map((entry) => {
             const height = Math.max((entry.total / maxTotal) * 100, entry.total > 0 ? 8 : 0);
-            const slot = Math.min(Math.floor((entry.minuteOfDay ?? 0) / 15), 95);
+            // Changed: Calculate slot based on 6AM start offset (360 minutes), mapped over 57 slots max
+            const slot = Math.min(Math.floor((entry.minuteOfDay - 360) / 15), 56);
             const tooltip = `${entry.label} - ${entry.total} in line`;
             return `<div class="interval-bar-item" style="grid-column: ${slot + 1};" title="${tooltip}" aria-label="${tooltip}"><div class="interval-bar-stack"><span class="interval-bar-fill" style="height: ${height.toFixed(1)}%"></span></div></div>`;
           }).join("");
